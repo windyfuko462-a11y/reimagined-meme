@@ -1,0 +1,205 @@
+import json
+import random
+from typing import List, Dict
+
+# =============================================================
+# 1. マスターデータ定義
+# =============================================================
+SHOP_ITEMS = [
+    {"id": 1, "name": "頑丈な鉄フライパン", "desc": "ずっしり重い。殴れそうだし調理もできそう。"},
+    {"id": 2, "name": "超強力両面テープ", "desc": "一度貼ったら大の大人でも剥がせない粘着力。"},
+    {"id": 3, "name": "特濃ハチミツの壺", "desc": "ドロドロで高カロリー。甘くて美味。"},
+    {"id": 4, "name": "100mの極細タコ糸", "desc": "軽くて長い。引張強度そこそこ。"},
+    {"id": 5, "name": "アヒルのおもちゃ", "desc": "どこにでもある黄色いゴムアヒル。結構うるさい。"},
+    {"id": 6, "name": "大量のプチプチ", "desc": "荷造り用の気泡緩衝材。潰すと気持ちいい。"},
+    {"id": 7, "name": "絶対に割れないヘリウム風船", "desc": "なぜか針を刺しても破裂しない、浮力のある風船。"},
+    {"id": 8, "name": "特濃粉末ワサビ", "desc": "開けた瞬間、涙とクシャミが止まらない刺激臭。"},
+    {"id": 9, "name": "高級タキシード一式", "desc": "ピシッとした仕立て。蝶ネクタイ付き。"},
+    {"id": 10, "name": "金色の拡声器", "desc": "電池長持ち。遠くまで声が響く。"},
+    {"id": 11, "name": "車の予備バッテリー", "desc": "重い。12Vの電気が取り出せる。"},
+    {"id": 12, "name": "万能トゲ抜きピンセット", "desc": "職人手作りの超精密ピンセット。"},
+    {"id": 13, "name": "子供用ビニールプール", "desc": "膨らますと直径1.5mくらいになる。足踏み空気入れ付。"},
+    {"id": 14, "name": "大量の輪ゴム", "desc": "ごく普通の輪ゴム。束ねると結構な弾力。"},
+    {"id": 15, "name": "激辛ハバネロソース", "desc": "触れただけで皮膚がヒリヒリする劇物レベル。"},
+    {"id": 16, "name": "折りたたみ式アルミ脚立", "desc": "軽くて頑丈。ちょっと高いところに手が届く。"},
+    {"id": 17, "name": "巨大な虫眼鏡", "desc": "焦点がよく合う大きなレンズ。"},
+    {"id": 18, "name": "アロマキャンドル", "desc": "100時間燃える。とても心が落ち着く。"},
+    {"id": 19, "name": "中古の黒板消し", "desc": "パンパン叩くと白い煙幕になる。"},
+    {"id": 20, "name": "手巻き式オルゴール", "desc": "哀愁漂うメロディが流れる。"}
+]
+
+# 行き先ごとの危機リスト（各3問で構成）
+DESTINATIONS = [
+    {
+        "name": "超雪山",
+        "flavor": "標高7,500m・極寒の白銀峰。凍傷と滑落の恐怖。",
+        "crises": [
+            "猛烈なブリザードと急激な体温低下（氷点下35度）！ 風を遮るものがない！",
+            "雪山の主・狂暴な巨大雪男（イエティ）が突進してきた！",
+            "逃げた先は幅15mの底なしクレバス（氷の裂け目）！ 向こう岸に渡らないと凍死する！"
+        ]
+    },
+    {
+        "name": "宇宙空間",
+        "flavor": "真空と無重力のステーション。空気漏れとエイリアン。",
+        "crises": [
+            "船体に微小隕石が直撃！ 小さな穴から貴重な酸素が急速に漏れ出している！",
+            "通気ダクトから正体不明の触手型エイリアンが侵入してきた！",
+            "姿勢制御ロケットが故障！ 自転が止まらず、このままでは遠心力でバラバラになる！"
+        ]
+    },
+    {
+        "name": "過酷なトライアスロン",
+        "flavor": "酷暑の地獄レース。脱水症状と機材トラブル。",
+        "crises": [
+            "スイム区間、なぜか大量のクラゲの大群に行く手を阻まれた！",
+            "バイク区間、サドルとチェーンが同時に吹き飛んだ！",
+            "ラン区間、激しい脱水症状とハンガーノック（エネルギー切れ）で倒れかけた！"
+        ]
+    },
+    {
+        "name": "辺境の薬売り",
+        "flavor": "猜疑心の強い村々と奇病の蔓延。商魂とハッタリの旅路。",
+        "crises": [
+            "村の自警団に『怪しい毒薬売り』と勘違いされ、取り囲まれて尋問された！",
+            "村長が『謎の激しいしゃっくりと高熱』で倒れた！ 今すぐ効く薬を作れと迫られた！",
+            "商売敵の詐欺商人から『どちらの薬が優れているか』の公開勝負を挑まれた！"
+        ]
+    }
+]
+
+# =============================================================
+# 2. LLM判定用プロンプト・呼び出し
+# =============================================================
+def build_evaluation_prompt(destination: dict, crisis: str, inventory: List[dict], player_action: str) -> str:
+    inventory_text = "\n".join([f"- [{item['id']}] {item['name']}: {item['desc']}" for item in inventory])
+    
+    return f"""
+あなたは不条理サバイバルコメディゲームの審判（GM）です。
+プレイヤーの機転やこじつけの「発想力」「説得力」「面白さ」を厳密に5段階で採点してください。
+手持ちアイテムの特性を無視していたり、明らかな無理がある場合は容赦なく低い評価をつけてください。
+
+【舞台】
+行き先: {destination['name']}（{destination['flavor']}）
+直面した危機: {crisis}
+
+【プレイヤーの所持品】
+{inventory_text}
+
+【プレイヤーの行動】
+{player_action}
+
+【採点基準】
+5: 大成功（抜群の機転、完璧な論理または爆笑ものの妙手）
+4: 成功（理に適っており、実用的に解決できる）
+3: 普通（乗り切れるが怪我やアイテム破損などの代償が伴う）
+2: 失敗（こじつけが破綻しており、状況が悪化する）
+1: 大失敗（自滅、アイテムの無駄遣い、事態が最悪化）
+
+【出力形式】
+JSONオブジェクトのみを出力してください（マークダウン等不要）。
+{{
+  "rating": 1〜5の整数,
+  "rating_label": "大失敗" / "失敗" / "普通" / "成功" / "大成功",
+  "score_delta": -20 〜 +30 の整数,
+  "critique": "判定理由と結果の顛末描写（ユーモアを交えて）",
+  "better_alternative": "プレイヤーの所持品リスト全体から見て、『実はこれとこれを使えばもっとスマートだった』という別解・模範解答の提案"
+}}
+"""
+
+def judge_turn_mock(destination: dict, crisis: str, inventory: List[dict], player_action: str) -> dict:
+    """
+    API未接続時のモック（実際の運用時は Gemini/OpenAI API に置き換え）
+    """
+    # 実際の実装例:
+    # response = ai_client.generate(prompt=build_evaluation_prompt(...))
+    # return json.loads(response.text)
+    
+    return {
+        "rating": 4,
+        "rating_label": "成功",
+        "score_delta": 15,
+        "critique": f"「{player_action[:20]}...」という機転が見事にハマり、危機を乗り切りました！",
+        "better_alternative": f"所持品にあった『{inventory[0]['name']}』を組み合わせれば、もっと余力を残せました。"
+    }
+
+# =============================================================
+# 3. ゲームループ本体
+# =============================================================
+def play_game():
+    print("=" * 60)
+    print("   ★ 不条理サバイバル：手持ちの10個で何とかするゲーム ★")
+    print("=" * 60)
+    print("\nあなたは怪しい店『よろず屋・パンドラ』にやってきました。")
+    print("店主「旅の旦那、持っていけるのは10個ポッキリだ。どこへ行くかはお楽しみさ！」\n")
+
+    # ショップ表示
+    for item in SHOP_ITEMS:
+        print(f"[{item['id']:2d}] {item['name']:<18} | {item['desc']}")
+
+    # 1. アイテム選択
+    selected_ids = []
+    while len(selected_ids) != 10:
+        raw_input_data = input("\n購入するアイテム番号を10個、カンマ区切りで入力してください (例: 1,2,6,7,8,10,12,13,15,17):\n> ")
+        try:
+            parsed = [int(x.strip()) for x in raw_input_data.split(",") if x.strip()]
+            if len(set(parsed)) == 10 and all(1 <= x <= 20 for x in parsed):
+                selected_ids = parsed
+            else:
+                print("※ 重複のない1〜20の番号をちょうど10個指定してください！")
+        except ValueError:
+            print("※ 半角数字とカンマで入力してください。")
+
+    inventory = [item for item in SHOP_ITEMS if item["id"] in selected_ids]
+    
+    # 2. くじ引き（行き先決定）
+    destination = random.choice(DESTINATIONS)
+    print("\n" + "=" * 60)
+    print("店を出た瞬間、首根っこを掴まれてくじを引かされた……！")
+    print(f"【行き先：{destination['name']}】")
+    print(f"環境：{destination['flavor']}")
+    print("=" * 60)
+
+    survival_points = 50  # 0以下でゲームオーバー、100到達でSランク生還
+
+    # 3. クライシスループ（全3問）
+    for turn_idx, crisis in enumerate(destination["crises"], start=1):
+        print(f"\n▼ 【第{turn_idx}の試練】(生存値: {survival_points} pt)")
+        print(f"危機：{crisis}\n")
+        print("【現在の持ち物】: " + ", ".join([f"[{i['id']}]{i['name']}" for i in inventory]))
+        
+        player_action = ""
+        while not player_action.strip():
+            player_action = input("\n手持ちのアイテムをどう使って切り抜けますか？（こじつけ・行動を入力）:\n> ")
+
+        # 判定
+        result = judge_turn_mock(destination, crisis, inventory, player_action)
+
+        # 結果反映
+        survival_points += result["score_delta"]
+        print("\n" + "-" * 50)
+        print(f"【判定】: 星 {result['rating']}/5 （{result['rating_label']}）")
+        print(f"【生存値変動】: {result['score_delta']:+d} pt  ==>  現在値: {survival_points} pt")
+        print(f"【結果】: {result['critique']}")
+        print(f"\n💡【GMの別解アドバイス】:\n{result['better_alternative']}")
+        print("-" * 50)
+
+        # 死亡判定
+        if survival_points <= 0:
+            print("\n💀 生存値が尽きました……あなたの旅はここで露と消えました。（GAME OVER）")
+            return
+
+    # 4. エンディング判定
+    print("\n" + "=" * 60)
+    print("★ 全ての危機を潜り抜けました！ 最終結果発表 ★")
+    print(f"最終生存値: {survival_points} pt")
+    if survival_points >= 90:
+        print("評価【Sランク：伝説のサバイバー】ゴミ同然の荷物で奇跡を起こした英雄！")
+    elif survival_points >= 60:
+        print("評価【Aランク：見事生還】満身創痍ながらも立派に生きて帰還した！")
+    else:
+        print("評価【Bランク：からくも生き残り】ボロボロの状態で救助された……トラウマ必至。")
+    print("=" * 60)
+
+if __name__ == "__main__":
+    play_game()
